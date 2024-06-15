@@ -1,0 +1,70 @@
+C51 COMPILER V9.60.0.0   KUNKUNMV                                                          06/06/2024 00:34:22 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE KUNKUNMV
+OBJECT MODULE PLACED IN .\Objects\Kunkunmv.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Driver\Kunkunmv.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Driver) DEBUG OB
+                    -JECTEXTEND PRINT(.\Listings\Kunkunmv.lst) TABS(2) OBJECT(.\Objects\Kunkunmv.obj)
+
+line level    source
+
+   1          #include <Kunkunmv.h>
+   2          
+   3          void Delay(unsigned int xms)
+   4          {
+   5   1      
+   6   1          while(xms--)
+   7   1          {
+   8   2                unsigned char i, j;
+   9   2      
+  10   2            i = 2;
+  11   2            j = 199;
+  12   2            do
+  13   2            {
+  14   3              while (--j);
+  15   3            } while (--i);
+  16   2        
+  17   2          }
+  18   1      }
+  19          void _74HC595_WriteByte(unsigned char byte)
+  20          {
+  21   1        unsigned char i;
+  22   1        for(i=0;i<8;i++)
+  23   1        {
+  24   2          SER=byte&(0x80>>i);
+  25   2          SCK=1;
+  26   2          SCK=0;
+  27   2        }
+  28   1          RCK=1;
+  29   1          RCK=0;
+  30   1      }
+  31          //led????
+  32          void LED(unsigned char Y,DATA)
+  33          {
+  34   1        _74HC595_WriteByte(DATA);
+  35   1        P0=~(0X80>>Y);
+  36   1        Delay(1);
+  37   1        P0=0XFF;
+  38   1      }
+  39          //led???
+  40          void LED_Init()
+  41          {
+  42   1          SCK=0;
+  43   1          RCK=0;
+  44   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    118    ----
+   CONSTANT SIZE    =    280    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+C51 COMPILER V9.60.0.0   KUNKUNMV                                                          06/06/2024 00:34:22 PAGE 2   
+
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

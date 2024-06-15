@@ -1,0 +1,61 @@
+C51 COMPILER V9.60.0.0   SPI                                                               06/15/2024 12:47:18 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE SPI
+OBJECT MODULE PLACED IN .\Objects\SPI.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Driver\SPI.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Driver) DEBUG OBJECTE
+                    -XTEND PRINT(.\Listings\SPI.lst) TABS(2) OBJECT(.\Objects\SPI.obj)
+
+line level    source
+
+   1          #include <SPI.h>
+   2          
+   3          float Read_AD_Data(unsigned char cmd)
+   4          {
+   5   1        unsigned char i;
+   6   1        unsigned int AD_Value = 0;
+   7   1        DCLK = 0;
+   8   1        CS  = 0;
+   9   1        
+  10   1        for(i=0; i<8; i++)
+  11   1        {
+  12   2          DIN = cmd >> 7; 
+  13   2          cmd <<= 1;
+  14   2          DCLK = 0; 
+  15   2          DCLK = 1;
+  16   2        }
+  17   1       
+  18   1        for(i=6; i>0; i--); 
+  19   1        DCLK = 1; 
+  20   1        _nop_();
+  21   1        _nop_();
+  22   1        DCLK = 0;
+  23   1        _nop_();
+  24   1        _nop_();
+  25   1       
+  26   1        for(i=0; i<12; i++)
+  27   1        {
+  28   2          AD_Value <<= 1;
+  29   2          DCLK = 1;
+  30   2          DCLK = 0;
+  31   2          AD_Value |= DOUT;
+  32   2        }
+  33   1        CS = 1;
+  34   1        
+  35   1        return (AD_Value / 4096.0) * 5;//读取到的值为12位精度，除以2^12次方得到比例，乘以总
+             -量程5V即可得到电压值
+  36   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    127    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

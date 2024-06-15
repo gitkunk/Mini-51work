@@ -1,0 +1,13 @@
+".\Objects\main.obj",
+".\Objects\Kunkunmv.obj",
+".\Objects\OneWire.obj",
+".\Objects\DS18B20.obj",
+".\Objects\ds1302.obj",
+".\Objects\Key.obj",
+".\Objects\Led.obj",
+".\Objects\Seg.obj",
+".\Objects\SPI.obj",
+".\Objects\iic.obj" 
+TO ".\Objects\Project" 
+PRINT(".\Listings\Project.m51") RAMSIZE(256) 
+DISABLEWARNING (16) 

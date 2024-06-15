@@ -1,0 +1,728 @@
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Driver) DEBUG OBJECTEXTEND PRI
+                    -NT(.\Listings\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /*
+   2          简易的时钟彩灯音乐盒
+   3          日期：2024-06-6
+   4          作者：1632242111031
+   5          参考：STC89C52硬件电路原理图
+   6          
+   7          Simple real-time music box system with color lights
+   8          Date: 2024-06-6
+   9          Author: I roasted sweet potatoes in Fuzhou
+  10          Reference: STC89C52 hardware circuit schematic
+  11          Description: Please don't COPY.
+  12          anti-counterfeiting will be prosecuted
+  13          */
+  14          
+  15          /*⭐⭐⭐⭐⭐⭐⭐⭐Welcome to the works of sweet potato⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐*/
+  16          
+  17          #include <REGX52.H>//51特殊寄存器定义相关头文件
+  18          #include <Kunkunmv.h>//点阵屏头文件
+  19          #include <INTRINS.H>//nop延时函数所在头文件
+  20          #include <DS18B20.h>//温度传感器头文件
+  21          #include <OneWire.h>//单总线头文件
+  22          #include <ds1302.h>//ds1302头文件
+  23          #include <SPI.h>//AD转换-->SPI通讯头文件
+  24          #include <Key.h>//按键底层判断头文件
+  25          #include <Led.h>//led闪烁头文件
+  26          #include <iic.h>//iic头文件
+  27          #include <Seg.h>//数码管底层头文件
+  28          
+  29          /*系统启动开关*/
+  30          bit System_Begin;
+  31          /*上电流水灯参数*/
+  32          bit Led_Light;
+  33          /*按键,数码管显示,LED流水灯,时钟参数*/
+  34          unsigned char Seg_Disp_Page = 0;
+  35          unsigned char Key_Slow_Down,Seg_Slow_Down;            //按键及数码管减速参数
+  36          unsigned char Key_Val,Key_Down,Key_Up,Key_Old;        //按键参数(上升，下降沿)
+  37          unsigned char Seg_Buf[8] = {10,10,10,10,10,10,10,10}; //数码管段码显示
+  38          unsigned char Seg_Point[8] = {0,0,0,0,0,0,0,0};       //数码管小数点显示数组
+  39          unsigned char ucLed[8] = {0,0,0,0,0,0,0,0};           //Led显示数组
+  40          unsigned char Led_Wela[2][8] = {{0XFE,0XFD,0XFB,0XF7,0XEF,0XDF,0XBF,0X7F},//Led花式点亮段码
+  41                                          {0X7E,0XBD,0XDB,0XE7,0XE7,0XDB,0XBD,0X7E}};//前四位0-7,1-6,2-5,3-4亮
+  42          unsigned char uc_Rtc[3] = {0X23,0X59,0X55};           //时钟初始值
+  43          unsigned char LED_OR_SEG_OR_BEEP;                     //LED/数码管/蜂鸣器 三大模式选择标志位 0- LE
+             -D流转模式 1-数码管显示模式 2-音乐播放模式
+  44          unsigned char Seg_Disp_Page;    //数码管子界面切换参数 0-时钟显示界面,1-风扇等级显示�
+             -�面,2-温度显示界面,3-LED流转参数设置界面
+  45          unsigned char Seg_Pos;          //数码管扫描位
+  46          /*LED花式点亮显示相关参数*/
+  47          bit Led_Page_Choose;            //流转显示界面-->流转设置界面 切换按键
+  48          bit Led_Dat_Choose;             //LED流转参数操作选择按键 0-亮度等级设置,1-流转时间设置
+  49          bit Light_Disp;                 //等级(亮度/电压/光敏/热敏/外部电压)参数显示标志位 0-灭 1-�
+             -� 
+  50          unsigned int Led_Ctro = 400;    //流转时间控制参数
+  51          unsigned char Led_Mode_Dat = 1; //模式编号
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 2   
+
+  52          unsigned char Level = 2;  //等级参数(亮度/电压/光敏/热敏/外部电压)
+  53          unsigned char Led_Pos;          //Led的pwm选择控制位
+  54          unsigned char Led_cnt;          //Led的pwm计数参数
+  55          unsigned int Led_Time;          //Led流转时间计时参数
+  56          unsigned char k = 0;            //LED显示扫描循环参数
+  57          /*闪烁计时参数(在LED流转与温度的参数设置界面共用)*/
+  58          unsigned int Time400ms;         //闪烁计时
+  59          bit Shine_Flag;                 //闪烁参数
+  60          /*风扇启停/四通道AD转换相关参数(光敏,热敏,变压器,外部通道)*/
+  61          float Voltage;                  //SPI读取AD转换电压值,该值关联风扇PWM占空比,进一步控�
+             -�风扇速度
+  62          unsigned char Ad_Disp_Choose;   //AD显示子界面切换参数 0-风扇等级/电压值显示子界面 1-�
+             -��度值显示子界面 2-电阻温度值显示子界面 3-外部电压值显示子界面
+  63          bit Fan_Ctro;                   //风扇启停控制参数
+  64          /*温度控制相关参数*/
+  65          float Temperature = 25;         //单总线读取温度值
+  66          bit Temp_Page_Choose;           //温度采集界面-->设置上下限界面 切换按键
+  67          bit Temp_Dat_Choose;            //温度阈值参数操作选择按键
+  68          bit Beep_Ring;                  //温度告警参数
+  69          unsigned char Temp_Max = 30;    //温度阈值上限
+  70          unsigned char Temp_Min = 20;    //温度阈值下限
+  71          /*蜂鸣器相关参数*/
+  72          sbit BEEP=P2^5;                 //蜂鸣器接口
+  73          bit Music_Switch;               //音乐启停开关(按键控制)
+  74          bit Music_Stop;                 //音乐暂停继续开关
+  75          bit flag;                       //音乐启停开关(标志位)(0/1-->控制蜂鸣器响与不响)
+  76          unsigned int h,i,hz;            //hz-频率(该参数对应音调的频率) h-音调(该参数对应音调数组
+             -song(do,re,mi,fa...)) i-计数参数(控制音乐的进行)
+  77          unsigned char jiep;             //节拍参数控制音符的持续时间,在定时器二中计时(一次50ms)
+  78          unsigned int code G_fre[]={63928,64103,64260,     //#2,4,5 低音
+  79          64331,64463,64580,64633,64732,64820,64898,64934 //#5,#6,1,#1,#2,4,5,#5 中音
+  80          ,0,64777};//#G调音阶，最后一个为中音3
+  81          unsigned char code song[]={
+  82          1,6,5,3,6,3,5,3,6,3,5,6,1,6,11,12,                                //我应该拿你怎样
+  83          1,6,0,3,1,3,1,3,0,3,1,6,1,6,11,12,                                //所有人都在看着我
+  84          1,3,1,3,6,6,5,3,6,3,5,6,1,6,11,12,                                //我的心总是不安
+  85          1,6,0,3,1,3,1,3,0,3,1,6,1,6,3,12,                                 //我现在已病入膏肓
+  86          6,12,5,12,1,6,1,6,11,6,0,6,1,6,11,6,6,3,6,3,5,3,6,3,5,6,1,6,11,12,//e~o，真的，难道，因你而疯�
+             -�吗
+  87          1,6,0,3,1,3,1,3,0,3,1,6,1,6,1,12,11,6,                            //我本来不是这种人
+  88          1,6,0,3,1,3,1,3,0,3,1,6,1,6,3,12,                                 //因你变成奇怪的人
+  89          10,12,9,12,7,12,5,6,5,6,10,12,9,12,7,6,5,12,7,12,11,6,            //第一次呀变成这样的我
+  90          5,3,5,6,5,6,12,6,12,6,12,6,8,6,9,6,                               //不管我怎么去否认
+  91          1,6,5,6,5,6,8,12,11,12,11,12,11,6,1,3,1,6,11,12,                  //鸡你太美，baby
+  92          1,6,5,6,5,6,8,12,11,12,11,12,11,6,1,3,1,6,11,12,11,12,            //鸡你太美，baby
+  93          1,6,5,6,5,6,8,12,11,12,11,12,11,6,1,3,1,6,11,12,                  //鸡你太美，baby
+  94          1,6,5,6,5,6,8,12,11,12,11,12,11,6,1,3,1,6,11,12,11,12,            //鸡你太美，baby
+  95          5,3,5,3,8,3,5,3,5,3,5,3,5,3,5,3,5,3,4,3,5,6,5,6,                  //迎面走来的你让我如此蠢蠢欲动
+  96          5,3,5,3,8,3,5,3,5,3,5,3,5,3,5,3,5,3,4,3,5,6,5,6,                  //这种感觉我从未拥有，cause i got a cru
+             -sh on you
+  97          }; //歌谱 2个一组(0,0)(音调,节拍(一拍对应值为12))
+  98          
+  99          /*蜂鸣器播放音乐相关函数*/
+ 100          void sing(){
+ 101   1        if(Music_Switch){
+ 102   2          if(flag==1){
+ 103   3            h=song[i];
+ 104   3            jiep=song[i+1];
+ 105   3            i=i+2;
+ 106   3            if(i>254)
+ 107   3              i=0;
+ 108   3            hz=G_fre[h];
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 3   
+
+ 109   3            TH1=(hz)/256;
+ 110   3            TL1=(hz)%256;
+ 111   3            flag=0;
+ 112   3            TR2=1;
+ 113   3            TR1=1;
+ 114   3          }
+ 115   2        }
+ 116   1      }
+ 117          
+ 118          void Sing_Init(){//开关音乐初始化函数
+ 119   1        i = 0;
+ 120   1        TR1 = 0;
+ 121   1        TR2 = 0;
+ 122   1      }
+ 123          
+ 124          void Sing_Off(){//启停函数-->关定时器-->暂停
+ 125   1        TR1 = 0;
+ 126   1        TR2 = 0;
+ 127   1      }
+ 128          
+ 129          void Sing_On(){//启停函数-->开定时器-->播放
+ 130   1        TR1 = 1;
+ 131   1        TR2 = 1;
+ 132   1      }
+ 133          /*系统初始化函数*/
+ 134          void Sys_Init(void){
+ 135   1        TMOD=0x11;                //定时器0工作在模式1 定时1ms
+ 136   1        T2MOD=0;                  //定时器1模式1 用作音调发生器
+ 137   1        T2CON=0;                  //定时器2定时模式 定时50ms 用作延音
+ 138   1        TL0=(65536 - 1000) % 256; //设置定时低八位初始值
+ 139   1        TH0=(65536 - 1000) / 256; //设置定时高八位初始值
+ 140   1        TH2=0;
+ 141   1        TL2=0;
+ 142   1        TF0=0;
+ 143   1        TR0=1;
+ 144   1        ET0=1;
+ 145   1        ET1=1;
+ 146   1        ET2=1;
+ 147   1        EA=1;
+ 148   1        i=0;
+ 149   1        flag=1;
+ 150   1        P1_0 = 0;
+ 151   1      }
+ 152          /*系统关闭函数*/
+ 153          void Sys_Off(void){
+ 154   1        TF0=0;
+ 155   1        TR0=0;
+ 156   1        ET0=0;
+ 157   1        ET1=0;
+ 158   1        ET2=0;
+ 159   1        EA=0;
+ 160   1        i=0;
+ 161   1        flag=0;
+ 162   1        P1_0 = 0;
+ 163   1        P0 = 0;
+ 164   1        P2 = 0XFF;
+ 165   1      }
+ 166          /*按键处理函数*/
+ 167          void Key_Proc(){
+ 168   1        if(System_Begin){
+ 169   2          if(Key_Slow_Down) return;
+ 170   2          Key_Slow_Down = 1;
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 4   
+
+ 171   2        }
+ 172   1        Key_Val = Key_Read();
+ 173   1        Key_Down = Key_Val & (Key_Old ^ Key_Val);
+ 174   1        Key_Up = ~Key_Val & (Key_Old ^ Key_Val);
+ 175   1        Key_Old = Key_Val;
+ 176   1        
+ 177   1        switch(Key_Down){
+ 178   2          case 9:
+ 179   2            if(!System_Begin) Led_Light = ~Led_Light;
+ 180   2            if(System_Begin) Sys_Off();
+ 181   2            System_Begin = ~System_Begin;
+ 182   2            
+ 183   2          break;
+ 184   2          case 8://-按键(对一些参数的减法操作) 兼容亮度等级显示 
+ 185   2            if(!Led_Dat_Choose && Seg_Disp_Page == 3){
+ 186   3              if(--Led_Mode_Dat == 0)
+ 187   3                Led_Mode_Dat = 4;
+ 188   3                EEPROM_Write(&Led_Mode_Dat,0,1);
+ 189   3              }
+ 190   2            if(Led_Dat_Choose && Seg_Disp_Page == 3){
+ 191   3              Led_Ctro -= 100;
+ 192   3              if(Led_Ctro < 400) Led_Ctro = 1200;
+ 193   3            }
+ 194   2            if(Seg_Disp_Page == 1){
+ 195   3              Light_Disp = ~Light_Disp;
+ 196   3            }
+ 197   2            if(Seg_Disp_Page == 2 && Temp_Page_Choose && !Temp_Dat_Choose){
+ 198   3              Temp_Min -= 1;
+ 199   3              if(Temp_Min < 20) Temp_Min = 20;
+ 200   3              EEPROM_Write(&Temp_Min,2,1);
+ 201   3            }
+ 202   2            if(Seg_Disp_Page == 2 && Temp_Page_Choose && Temp_Dat_Choose){
+ 203   3              Temp_Max -= 1;
+ 204   3              if(Temp_Max < 20) Temp_Max = 20;
+ 205   3              EEPROM_Write(&Temp_Max,1,1);
+ 206   3            }
+ 207   2          break;
+ 208   2          case 7://子界面切换按键兼容参数设置(对上下限以及流转参数的设置)
+ 209   2            if(LED_OR_SEG_OR_BEEP == 1){//仅限在数码管界面设置
+ 210   3              if(!Led_Page_Choose){     //若在流转参数设置界面，则子界面不切换
+ 211   4                if(++Seg_Disp_Page == 4) Seg_Disp_Page = 0;//子界面切换
+ 212   4                if(Seg_Disp_Page == 0){ //返回时钟首界面，相关参数置零
+ 213   5                  Ad_Disp_Choose = 0;   //AD显示切换参数置为风扇等级显示界面
+ 214   5                  Temp_Dat_Choose = 0;  //温度采集上下限设置界面置温度上限闪烁
+ 215   5                  Led_Dat_Choose = 1;   //LED流转参数设置界面置亮度等级闪烁
+ 216   5                }
+ 217   4                if(Fan_Ctro){   //若风扇转动时切换子界面,风扇停止
+ 218   5                  P1_0 = 0;     //引脚置低电平
+ 219   5                  Fan_Ctro = 0; //风扇启停控制参数清零
+ 220   5                }
+ 221   4              }
+ 222   3              if(Seg_Disp_Page == 3){//流转参数设置界面
+ 223   4                Led_Dat_Choose = ~Led_Dat_Choose;//对参数上下限进行选择
+ 224   4              }
+ 225   3              if(Seg_Disp_Page == 3 && Temp_Page_Choose){
+ 226   4                Seg_Disp_Page = 2;
+ 227   4                Temp_Dat_Choose = ~Temp_Dat_Choose;
+ 228   4              }
+ 229   3            }
+ 230   2          break;
+ 231   2          case 6://+按键(对一些参数的加操作)
+ 232   2            if(!Led_Dat_Choose && Seg_Disp_Page == 3){
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 5   
+
+ 233   3              if(++Led_Mode_Dat >= 5)
+ 234   3                Led_Mode_Dat = 1;
+ 235   3              EEPROM_Write(&Led_Mode_Dat,0,1);
+ 236   3            }
+ 237   2            if(Led_Dat_Choose && Seg_Disp_Page == 3){
+ 238   3              Led_Ctro += 100;
+ 239   3              if(Led_Ctro > 1200) Led_Ctro = 400;
+ 240   3            }
+ 241   2            if(Seg_Disp_Page == 2 && Temp_Page_Choose && !Temp_Dat_Choose){
+ 242   3              Temp_Min += 1;
+ 243   3              if(Temp_Min > 35) Temp_Min = 35;
+ 244   3              EEPROM_Write(&Temp_Min,2,1);
+ 245   3            }
+ 246   2            if(Seg_Disp_Page == 2 && Temp_Page_Choose && Temp_Dat_Choose){
+ 247   3              Temp_Max += 1;
+ 248   3              if(Temp_Max > 35) Temp_Max = 35;
+ 249   3              EEPROM_Write(&Temp_Max,1,1);
+ 250   3            }
+ 251   2          break;
+ 252   2          case 5://LED与数码管切换显示按键
+ 253   2            if(LED_OR_SEG_OR_BEEP == 1){//若用户在参数设置界面切换模式 对相关闪烁参数以及界
+             -面选择参数操作
+ 254   3              Seg_Disp_Page = 0;    //若模式切换 置数码管初始界面为时钟首界面
+ 255   3              Ad_Disp_Choose = 0;   //AD显示切换参数置为风扇等级显示界面
+ 256   3              Temp_Page_Choose = 0; //温度界面置温度检测界面
+ 257   3              Temp_Dat_Choose = 0;  //温度采集上下限设置界面置温度上限闪烁,温度下限不闪烁
+ 258   3              Led_Dat_Choose = 1;   //LED流转参数设置界面置亮度等级闪烁,流转参数不闪烁
+ 259   3              Light_Disp = 0;       //等级显示参数清零 默认不显示等级
+ 260   3              Led_Page_Choose = 0;  //LED参数界面置LED正常显示界面
+ 261   3            }
+ 262   2            if(++LED_OR_SEG_OR_BEEP == 3) LED_OR_SEG_OR_BEEP = 0;//模式切换
+ 263   2            if(Fan_Ctro){//若风扇转动时切换子界面,风扇停止
+ 264   3              P1_0 = 0;//引脚置低电平
+ 265   3              Fan_Ctro = 0;//风扇启停控制参数清零
+ 266   3            }
+ 267   2          break;
+ 268   2          case 1://数码管显示模式数码管显示子界面切换按键
+ 269   2            if(Seg_Disp_Page == 1){//AD显示子界面切换
+ 270   3              if(++Ad_Disp_Choose == 4) Ad_Disp_Choose = 0;
+ 271   3            }
+ 272   2            if(Seg_Disp_Page == 2){//温度检测与设置界面切换
+ 273   3              Temp_Page_Choose = ~Temp_Page_Choose;
+ 274   3            }
+ 275   2            if(Seg_Disp_Page == 3){//LED正常显示与设置界面切换
+ 276   3              Led_Page_Choose = ~Led_Page_Choose;
+ 277   3            }
+ 278   2            if(Fan_Ctro){   //若风扇转动时切换子界面,风扇停止
+ 279   3              P1_0 = 0;     //引脚置低电平
+ 280   3              Fan_Ctro = 0; //风扇启停控制参数清零
+ 281   3            }
+ 282   2          break;
+ 283   2          case 2://音乐播放
+ 284   2            if(LED_OR_SEG_OR_BEEP == 2){
+ 285   3              if(!Music_Switch) Sing_Init();
+ 286   3              Music_Switch = ~Music_Switch;
+ 287   3            }
+ 288   2          break;
+ 289   2          case 3://音乐暂停
+ 290   2            if(Music_Switch == 1){
+ 291   3              if(!Music_Stop) Sing_Off();
+ 292   3              else Sing_On();
+ 293   3              Music_Stop = ~Music_Stop;
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 6   
+
+ 294   3            }
+ 295   2          break;
+ 296   2          case 4://风扇启动按键
+ 297   2            if(LED_OR_SEG_OR_BEEP == 1 && Seg_Disp_Page == 1){
+ 298   3              if(Fan_Ctro) P1_0 = 0;
+ 299   3              Fan_Ctro = ~Fan_Ctro;
+ 300   3            }
+ 301   2          break;
+ 302   2        }
+ 303   1      }
+ 304          /*数码管显示函数*/
+ 305          void Seg_Proc(){
+ 306   1        if(Seg_Slow_Down) return;
+ 307   1        Seg_Slow_Down = 1;
+ 308   1        
+ 309   1        switch(Seg_Disp_Page){
+ 310   2          case 0:
+ 311   2            Read_Clk(uc_Rtc);
+ 312   2            Seg_Buf[0] = uc_Rtc[0] / 16 % 16;
+ 313   2            Seg_Buf[1] = uc_Rtc[0] % 16;
+ 314   2            Seg_Buf[2] = 13;
+ 315   2            Seg_Buf[3] = uc_Rtc[1] / 16 % 16;
+ 316   2            Seg_Buf[4] = uc_Rtc[1] % 16;
+ 317   2            Seg_Buf[5] = 13;
+ 318   2            Seg_Buf[6] = uc_Rtc[2] / 16 % 16;
+ 319   2            Seg_Buf[7] = uc_Rtc[2] % 16;
+ 320   2            Seg_Point[2] = 0;
+ 321   2            Seg_Point[5] = 0;
+ 322   2          break;
+ 323   2          case 1:
+ 324   2            if(Ad_Disp_Choose == 0){
+ 325   3              Voltage = Read_AD_Data(0x94);//电位器AD转换实际0~4.93V
+ 326   3              Level = (unsigned char)(Voltage * 2);//等级细分0~9级   
+ 327   3              Seg_Buf[0] = 15;
+ 328   3              Seg_Buf[1] = Light_Disp ? Level <= 3 ? 20 : Level > 6 ? 21 : 13 : 10;        
+ 329   3              Seg_Buf[2] = Light_Disp ? (unsigned char)Voltage % 10 : 10;        
+ 330   3              Seg_Buf[3] = Light_Disp ? (unsigned char)(Voltage * 10) % 10 : 10; 
+ 331   3              Seg_Buf[4] = Light_Disp ? (unsigned char)(Voltage * 100) % 10 : 10;
+ 332   3              Seg_Buf[5] = 13;
+ 333   3              Seg_Buf[6] = Level;
+ 334   3              Seg_Buf[7] = 13;
+ 335   3              Seg_Point[2] = Light_Disp ? 1 : 0;
+ 336   3              Seg_Point[5] = 0;
+ 337   3            } else if(Ad_Disp_Choose == 1){//光敏电阻AD转换实际0~4.93V 0XA4
+ 338   3              Voltage = Read_AD_Data(0xA4);//电位器AD转换实际0~4.93V
+ 339   3              Level = (unsigned char)(Voltage * 2);//等级细分0~9级   
+ 340   3              Seg_Buf[0] = 17;
+ 341   3              Seg_Buf[1] = Light_Disp ? 13 : 10;
+ 342   3              Seg_Buf[2] = Light_Disp ? Level : 10;
+ 343   3              Seg_Buf[3] = Light_Disp ? 13 : 10;
+ 344   3              Seg_Buf[4] = 10;
+ 345   3              Seg_Buf[5] = (unsigned char)Voltage % 10;
+ 346   3              Seg_Buf[6] = (unsigned char)(Voltage * 10) % 10;
+ 347   3              Seg_Buf[7] = (unsigned char)(Voltage * 100) % 10;
+ 348   3              Seg_Point[2] = 0;
+ 349   3              Seg_Point[5] = 1;
+ 350   3            } else if(Ad_Disp_Choose == 2){//热敏电阻AD转换实际0~4.93V 0XD4
+ 351   3              Voltage = Read_AD_Data(0xD4);//电位器AD转换实际0~4.93V
+ 352   3              Level = (unsigned char)(Voltage * 2);//等级细分0~9级   
+ 353   3              Seg_Buf[0] = 11;
+ 354   3              Seg_Buf[1] = Light_Disp ? 13 : 10;
+ 355   3              Seg_Buf[2] = Light_Disp ? Level : 10;
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 7   
+
+ 356   3              Seg_Buf[3] = Light_Disp ? 13 : 10;
+ 357   3              Seg_Buf[4] = 10;
+ 358   3              Seg_Buf[5] = (unsigned char)Voltage % 10;
+ 359   3              Seg_Buf[6] = (unsigned char)(Voltage * 10) % 10;
+ 360   3              Seg_Buf[7] = (unsigned char)(Voltage * 100) % 10;
+ 361   3              Seg_Point[2] = 0;
+ 362   3              Seg_Point[5] = 1;
+ 363   3            } else if(Ad_Disp_Choose == 3){//AIN3位上的AD转换实际0~4.93V 0XE4
+ 364   3              Voltage = Read_AD_Data(0xE4);//电位器AD转换实际0~4.93V
+ 365   3              Level = (unsigned char)(Voltage * 2);//等级细分0~9级   
+ 366   3              Seg_Buf[0] = 15;
+ 367   3              Seg_Buf[1] = 0;
+ 368   3              Seg_Buf[2] = Light_Disp ? 13 : 10;
+ 369   3              Seg_Buf[3] = Light_Disp ? Level : 10;
+ 370   3              Seg_Buf[4] = Light_Disp ? 13 : 10;
+ 371   3              Seg_Buf[5] = (unsigned char)Voltage % 10;
+ 372   3              Seg_Buf[6] = (unsigned char)(Voltage * 10) % 10;
+ 373   3              Seg_Buf[7] = (unsigned char)(Voltage * 100) % 10;
+ 374   3              Seg_Point[2] = 0;
+ 375   3              Seg_Point[5] = 1;
+ 376   3            }
+ 377   2          break;
+ 378   2          case 2:
+ 379   2            if(!Temp_Page_Choose){
+ 380   3              DS18B20_ConvertT();
+ 381   3              Temperature = DS18B20_ReadT();
+ 382   3              Seg_Buf[0] = 11;
+ 383   3              Seg_Buf[1] = 10;
+ 384   3              Seg_Buf[2] = 10;
+ 385   3              Seg_Buf[3] = 10;
+ 386   3              Seg_Buf[4] = (unsigned char)(Temperature / 10) % 10;
+ 387   3              Seg_Buf[5] = (unsigned char)(Temperature) % 10;
+ 388   3              Seg_Buf[6] = (unsigned int)(Temperature * 10) % 10;
+ 389   3              Seg_Buf[7] = (unsigned int)(Temperature * 100) % 10;
+ 390   3              Seg_Point[2] = 0;
+ 391   3              Seg_Point[5] = 1;
+ 392   3            } else{
+ 393   3              Seg_Buf[0] = 12;
+ 394   3              Seg_Buf[1] = 13;
+ 395   3              Seg_Buf[2] = !Temp_Dat_Choose && Shine_Flag ? 10 : Temp_Min / 10 % 10;
+ 396   3              Seg_Buf[3] = !Temp_Dat_Choose && Shine_Flag ? 10 : Temp_Min % 10;
+ 397   3              Seg_Buf[4] = 13;
+ 398   3              Seg_Buf[5] = Temp_Dat_Choose && Shine_Flag ? 10 : Temp_Max / 10 % 10;
+ 399   3              Seg_Buf[6] = Temp_Dat_Choose && Shine_Flag ? 10 : Temp_Max % 10;
+ 400   3              Seg_Buf[7] = 13;
+ 401   3              Seg_Point[2] = 0;
+ 402   3              Seg_Point[5] = 0;
+ 403   3            }
+ 404   2            if(Temperature > Temp_Max){
+ 405   3              Beep_Ring = 1;
+ 406   3              Fan_Ctro = 1;
+ 407   3            } else if(Temperature < Temp_Min){
+ 408   3              Beep_Ring = 1;
+ 409   3              Fan_Ctro = 0;
+ 410   3            } else{
+ 411   3              Beep_Ring = 0;
+ 412   3              Fan_Ctro = 0;
+ 413   3            }
+ 414   2          break;
+ 415   2          case 3:
+ 416   2            if(Led_Page_Choose){
+ 417   3              Seg_Buf[0] = 13;
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 8   
+
+ 418   3              Seg_Buf[1] = !Led_Dat_Choose && Shine_Flag ? 10 : Led_Mode_Dat;
+ 419   3              Seg_Buf[2] = 13;
+ 420   3              Seg_Buf[3] = 10;
+ 421   3              Seg_Buf[4] = Led_Dat_Choose && Shine_Flag ? 10 : Led_Ctro >= 1000 ? Led_Ctro / 1000 % 10 : 10;
+ 422   3              Seg_Buf[5] = Led_Dat_Choose && Shine_Flag ? 10 : Led_Ctro / 100 % 10;
+ 423   3              Seg_Buf[6] = Led_Dat_Choose && Shine_Flag ? 10 : Led_Ctro / 10 % 10;
+ 424   3              Seg_Buf[7] = Led_Dat_Choose && Shine_Flag ? 10 : Led_Ctro % 10;
+ 425   3              Seg_Point[2] = 0;
+ 426   3              Seg_Point[5] = 0;
+ 427   3            } else {//正常显示
+ 428   3              Seg_Buf[0] = 13;
+ 429   3              Seg_Buf[1] = Led_Mode_Dat;
+ 430   3              Seg_Buf[2] = 13;
+ 431   3              Seg_Buf[3] = 10;
+ 432   3              Seg_Buf[4] = Led_Ctro >= 1000 ? Led_Ctro / 1000 % 10 : 10;
+ 433   3              Seg_Buf[5] = Led_Ctro / 100 % 10;
+ 434   3              Seg_Buf[6] = Led_Ctro / 10 % 10;
+ 435   3              Seg_Buf[7] = Led_Ctro % 10;
+ 436   3              Seg_Point[2] = 0;
+ 437   3              Seg_Point[5] = 0;
+ 438   3            }
+ 439   2          break;
+ 440   2        }
+ 441   1      }
+ 442          /*LED显示函数*/
+ 443          void Led_Proc(){
+ 444   1        static char k = 0;
+ 445   1        switch(Led_Mode_Dat){
+ 446   2          case 1:
+ 447   2            for(k = 0;k < 8;k++){
+ 448   3              ucLed[k] = Led_Pos == k ? 1 : 0;
+ 449   3            }
+ 450   2          break;
+ 451   2          case 2:
+ 452   2            for(k = 0;k < 8;k++){
+ 453   3              ucLed[k] = Led_Pos == 7 - k ? 1 : 0;
+ 454   3            }
+ 455   2          break;
+ 456   2          case 3:
+ 457   2            for(k = 0;k < 4;k++){
+ 458   3              ucLed[k] = ucLed[7 - k] = Led_Pos == 4 + k ? 1 : 0;
+ 459   3            }
+ 460   2          break;
+ 461   2          case 4:
+ 462   2            for(k = 4;k >= 0;k--){
+ 463   3              ucLed[k] = ucLed[7 - k] = Led_Pos == k ? 1 : 0;
+ 464   3            }
+ 465   2          break;
+ 466   2        }
+ 467   1      }
+ 468          /*延时函数*/
+ 469          void Delay750ms(){                //@12.000MHz
+ 470   1        unsigned char i, j, k;
+ 471   1      
+ 472   1        _nop_();
+ 473   1        i = 6;
+ 474   1        j = 180;
+ 475   1        k = 26;
+ 476   1        do{
+ 477   2          do{
+ 478   3            while (--k);
+ 479   3          }while (--j);
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 9   
+
+ 480   2        }while (--i);
+ 481   1      }
+ 482          
+ 483          void Delayxms(unsigned char n){   //@12.000MHz
+ 484   1        unsigned char i, j;
+ 485   1        
+ 486   1        while(n--){
+ 487   2        i = 2;
+ 488   2        j = 239;
+ 489   2          do
+ 490   2          {
+ 491   3            while (--j);
+ 492   3          } while (--i);
+ 493   2        }
+ 494   1      }
+ 495          
+ 496          /*启动显示LED花式点亮函数*/
+ 497          void LED_Fancy_Light(){
+ 498   1        for(i = 0;i < 8;i++){
+ 499   2          P2 = Led_Wela[0][i];
+ 500   2          Delayxms(30);
+ 501   2        }
+ 502   1        for(i = 0;i < 8;i++){
+ 503   2          P2 = Led_Wela[0][7-i];
+ 504   2          Delayxms(50);
+ 505   2        }
+ 506   1        for(i = 0;i < 4;i++){
+ 507   2          P2 = Led_Wela[1][i];
+ 508   2          Delayxms(80);
+ 509   2        }
+ 510   1        for(i = 0;i < 4;i++){
+ 511   2          P2 = Led_Wela[1][i+4];
+ 512   2          Delayxms(100);
+ 513   2        }
+ 514   1      }
+ 515          /*主函数*/
+ 516          void main(){
+ 517   1        unsigned char i,py=0,pl=0;
+ 518   1        P1_0 = 0;
+ 519   1        P0 = 0;
+ 520   1        LED_Init();                     //SPI RCLK(P3^5) SRCL(P3^6)初始化
+ 521   1        EEPROM_Read(&Led_Mode_Dat,0,1); //数据读取必须放在程序最开始
+ 522   1        Delay750ms();                   //稍微延时
+ 523   1        EEPROM_Read(&Temp_Max,1,1);     //温度阈值数据读取
+ 524   1        EEPROM_Read(&Temp_Min,2,1);     //温度阈值数据读取
+ 525   1        Set_Clk(uc_Rtc);                //时钟数据初始化
+ 526   1        Voltage = Read_AD_Data(0x94);   //上电先转换电压数据，防止第一次读数据错误
+ 527   1        DS18B20_ConvertT();             //上电先转换一次温度，防止第一次读数据错误
+ 528   1        Delay750ms();                   //等待转换完成
+ 529   1      
+ 530   1        while(1){
+ 531   2          Key_Proc();
+ 532   2          if(System_Begin){
+ 533   3            if(Led_Light){
+ 534   4              LED_Fancy_Light();              //程序启动显示 LED花式点亮
+ 535   4              Sys_Init();                     //寄存器以及相关参数初始化  
+ 536   4              Led_Light = 0;
+ 537   4            }
+ 538   3            if(LED_OR_SEG_OR_BEEP == 1){//数码管位选端与LED因为共用P2端口，P2端口冲突，这里数
+             -码管与LED显示分隔，通过按键K1操控。
+ 539   4              Seg_Proc();//数码管显示函数 200ms进一次
+ 540   4              if(Beep_Ring){//蜂鸣器报警与否
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 10  
+
+ 541   5                BEEP = ~BEEP;
+ 542   5              }
+ 543   4            } else if(LED_OR_SEG_OR_BEEP == 2){
+ 544   4              /*初始化数码管，灭的状态*/
+ 545   4              Seg_Buf[0] = 10;
+ 546   4              Seg_Buf[1] = 10;
+ 547   4              Seg_Buf[2] = 10;
+ 548   4              Seg_Buf[3] = 10;
+ 549   4              Seg_Buf[4] = 10;
+ 550   4              Seg_Buf[5] = 10;
+ 551   4              Seg_Buf[6] = 10;
+ 552   4              Seg_Buf[7] = 10;
+ 553   4              Seg_Point[5] = 0;
+ 554   4              sing();//蜂鸣器播放音乐
+ 555   4              /*LED点阵屏显示kunkun*/
+ 556   4              for(i=0;i<8;i++){
+ 557   5                LED(i,DH[i+py]);
+ 558   5              }
+ 559   4              pl++;
+ 560   4              if(pl>25){
+ 561   5                pl=0;
+ 562   5                py+=8;
+ 563   5                if(py>10000) py=0;
+ 564   5              }
+ 565   4            } else {
+ 566   4              /*初始化数码管，灭的状态*/
+ 567   4              Seg_Buf[0] = 10;
+ 568   4              Seg_Buf[1] = 10;
+ 569   4              Seg_Buf[2] = 10;
+ 570   4              Seg_Buf[3] = 10;
+ 571   4              Seg_Buf[4] = 10;
+ 572   4              Seg_Buf[5] = 10;
+ 573   4              Seg_Buf[6] = 10;
+ 574   4              Seg_Buf[7] = 10;
+ 575   4              Seg_Point[5] = 0;
+ 576   4              /*LED轮流显示界面同时进行AD转换，进行PWM调亮*/
+ 577   4              Level = (unsigned char)(Voltage * 2);//等级细分0~9级
+ 578   4              Voltage = Read_AD_Data(0x94);//AD转换实际0~4.93V
+ 579   4              Led_Proc();
+ 580   4            }
+ 581   3          }
+ 582   2        }
+ 583   1      }
+ 584          /*定时器0服务函数*/
+ 585          void Timer0_Server() interrupt 1{
+ 586   1        TL0 = 0x18;   //设置定时初值
+ 587   1        TH0 = 0xFC;   //设置定时初值
+ 588   1        if(++Key_Slow_Down == 10) Key_Slow_Down = 0;
+ 589   1        if(++Seg_Slow_Down == 200) Seg_Slow_Down = 0;
+ 590   1        if(LED_OR_SEG_OR_BEEP == 1){
+ 591   2          if(++Seg_Pos == 8) Seg_Pos = 0;
+ 592   2          Seg_Disp(Seg_Pos,Seg_Buf[Seg_Pos],Seg_Point[Seg_Pos]);
+ 593   2            if(Seg_Disp_Page >= 1){
+ 594   3              if(++Time400ms == 400){
+ 595   4                Time400ms = 0;
+ 596   4                Shine_Flag = ~Shine_Flag;
+ 597   4              }
+ 598   3            }
+ 599   2          if(Fan_Ctro){
+ 600   3            Led_cnt++;
+ 601   3            if(Seg_Disp_Page == 1 && Ad_Disp_Choose == 0){
+ 602   4              if(Led_cnt < Level){
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 11  
+
+ 603   5                P1_0 = 1;
+ 604   5              } else if(Led_cnt < 10){
+ 605   5                P1_0 = 0;
+ 606   5              } else {
+ 607   5                Led_cnt = 0;
+ 608   5              }
+ 609   4            } else if(Seg_Disp_Page == 2){
+ 610   4              if(Led_cnt < Temperature - Temp_Max){
+ 611   5                P1_0 = 1;
+ 612   5              } else if(Led_cnt < 10){
+ 613   5                P1_0 = 0;
+ 614   5              } else {
+ 615   5                Led_cnt = 0;
+ 616   5              }
+ 617   4            }
+ 618   3          }
+ 619   2        } else if(LED_OR_SEG_OR_BEEP == 0){
+ 620   2          Led_Disp(Seg_Pos,ucLed[Seg_Pos]);//LED扫描底层函数只点亮一次，需要手动切换亮灭调整
+             -占空比。
+ 621   2          if(++Led_Time >= Led_Ctro){
+ 622   3            if(++Led_Pos == 8){
+ 623   4              Led_Pos = 0;
+ 624   4              if(++Led_Mode_Dat == 5){
+ 625   5                Led_Mode_Dat = 1;
+ 626   5              }
+ 627   4              if(Led_Mode_Dat == 3 || Led_Mode_Dat == 4)Led_Pos = 4;
+ 628   4            }
+ 629   3            Led_Time = 0;
+ 630   3          }
+ 631   2          for(k=0;k<8;k++){
+ 632   3            if(Led_Pos == k){
+ 633   4              Led_cnt++;
+ 634   4              if(Led_cnt < Level){
+ 635   5                if(Led_Mode_Dat == 1){
+ 636   6                  P2 = Led_Wela[0][Led_Pos];
+ 637   6                } else if(Led_Mode_Dat == 2){
+ 638   6                  P2 = Led_Wela[0][7-Led_Pos];
+ 639   6                } else if(Led_Mode_Dat == 3){
+ 640   6                  P2 = Led_Wela[1][Led_Pos - 4];
+ 641   6                } else {
+ 642   6                  P2 = Led_Wela[1][Led_Pos];
+ 643   6                }
+ 644   5              } else if(Led_cnt < 10){
+ 645   5                P2 = 0XFF;
+ 646   5              } else {
+ 647   5                Led_cnt = 0;
+ 648   5              }
+ 649   4            }
+ 650   3          }
+ 651   2        }
+ 652   1      }
+ 653          /*定时器1服务函数*/
+ 654          void time1() interrupt 3{
+ 655   1        TH1=(hz)/256;
+ 656   1        TL1=(hz)%256;
+ 657   1        if(!flag)
+ 658   1          BEEP=!BEEP;
+ 659   1        else
+ 660   1          TR1=0;
+ 661   1      }
+ 662          
+ 663          /*定时器2服务函数*/
+C51 COMPILER V9.60.0.0   MAIN                                                              06/15/2024 12:47:18 PAGE 12  
+
+ 664          void time2() interrupt 5 {
+ 665   1        RCAP2H=(15536)/256;
+ 666   1        RCAP2L=(15536)%256;
+ 667   1        --jiep;
+ 668   1        if(jiep==0)
+ 669   1          flag=1;
+ 670   1        TF2=0;
+ 671   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3273    ----
+   CONSTANT SIZE    =    604    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     82       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =     13    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

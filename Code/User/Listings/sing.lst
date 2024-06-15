@@ -1,0 +1,58 @@
+C51 COMPILER V9.60.0.0   SING                                                              06/06/2024 00:34:22 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE SING
+OBJECT MODULE PLACED IN .\Objects\sing.obj
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE ..\Driver\sing.c OPTIMIZE(8,SPEED) BROWSE INCDIR(..\Driver) DEBUG OBJECT
+                    -EXTEND PRINT(.\Listings\sing.lst) TABS(2) OBJECT(.\Objects\sing.obj)
+
+line level    source
+
+   1          #include <sing.h>
+   2          void sing(){
+   3   1        if(Music_Switch){
+   4   2          if(flag==1){
+   5   3            h=song[i];
+   6   3            jiep=song[i+1];
+   7   3            i=i+2;
+   8   3            if(i>231)
+   9   3              i=0;
+  10   3            hz=G_fre[h];
+  11   3            TH1=(hz)/256;
+  12   3            TL1=(hz)%256;
+  13   3            flag=0;
+  14   3            TR2=1;
+  15   3            TR1=1;
+  16   3          }
+  17   2        }
+  18   1      }
+  19          
+  20          void Sing_Init(){
+  21   1        i = 0;
+  22   1        TR1 = 0;
+  23   1        TR2 = 0;
+  24   1      }
+  25          
+  26          void Sing_Off(){
+  27   1        TR1 = 0;
+  28   1        TR2 = 0;
+  29   1      }
+  30          
+  31          void Sing_On(){
+  32   1        TR1 = 1;
+  33   1        TR2 = 1;
+  34   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    130    ----
+   CONSTANT SIZE    =     74    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      7    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
